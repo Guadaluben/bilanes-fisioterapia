@@ -1,4 +1,19 @@
 import streamlit as st
+import pyrebase  # 👈 AÑADE ESTA LÍNEA
+
+# 🔐 Conexión a Firebase
+firebaseConfig = {
+    "apiKey": "TU_API_KEY",
+    "authDomain": "tu-proyecto.firebaseapp.com",
+    "projectId": "tu-proyecto",
+    "storageBucket": "tu-proyecto.appspot.com",
+    "messagingSenderId": "1234567890",
+    "appId": "1:1234567890:web:abcdef123456",
+    "databaseURL": ""
+}
+
+firebase = pyrebase.initialize_app(firebaseConfig)
+storage = firebase.storage()
 
 # Configuración de la aplicación
 st.set_page_config(page_title="Bilan de Fisioterapia", layout="centered")
