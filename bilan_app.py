@@ -29,6 +29,29 @@ info_adicional = st.text_area("📝 Información adicional sobre el paciente", h
 
 # Botón para generar el informe
 if st.button("📑 Generar Informe"):
+    import tempfile  # Asegúrate de importar esto al inicio del archivo si no está
+
+# Guardar el informe en un archivo temporal
+with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp_file:
+    temp_file.write(informe_generado.encode("utf-8"))
+    temp_path = temp_file.name
+
+# Crear el nombre del archivo en Firebase Storage
+from datetime import date
+fecha_actual = date.today().strftime("%Y-%m-%d")
+nombre_archivo = f"{uploaded_file.name.replace(' ', '_')}_{fecha_actual}.txt"
+ruta_en_storage = f"informes/{nombre_archivo}"
+
+# Subir a Firebase Storage
+storage.child(ruta_en_storage).put(temp_path)
+
+# Obtener la URL pública del archivo
+url = storage.child(ruta_en_storage).get_url(None)
+
+# Mostrar el enlace en la app
+st.success("✅ Informe subido a Firebase Storage correctamente.")
+st.markdown(f"[📄 Haz clic aquí para ver o descargar el informe]({url})")
+
     if uploaded_file is not None:
         # Simulación de un informe generado por la API de OpenAI
         informe_generado = f"""
