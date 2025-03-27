@@ -1,4 +1,6 @@
 streamlit
 pyrebase4
 gcloud
+setuptools
+
 
