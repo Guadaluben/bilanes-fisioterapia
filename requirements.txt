@@ -1,5 +1,7 @@
 streamlit
 pyrebase4
+google-cloud-storage
+setuptools
 pytesseract
 pdf2image
 Pillow
