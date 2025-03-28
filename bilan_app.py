@@ -27,7 +27,7 @@ storage = firebase.storage()
 st.set_page_config(page_title="BilanKineIA", layout="centered")
 st.title("BilanKineIA")
 
-OCR_SPACE_API_KEY = "helloworld"  # Reemplaza esto por tu clave si la recibes
+OCR_SPACE_API_KEY = "helloworld"  # Reemplaza por tu clave real si la recibes
 
 # -------------------------
 # FUNCIONES OCR
