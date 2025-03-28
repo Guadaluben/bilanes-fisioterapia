@@ -1,13 +1,13 @@
 import streamlit as st
+import requests
+import tempfile
 import pyrebase
 import datetime
-import tempfile
-import pytesseract
-import fitz  # PyMuPDF
-from PIL import Image
 import re
 
-# Configuración Firebase
+# -------------------------
+# CONFIGURACIÓN DE FIREBASE
+# -------------------------
 firebaseConfig = {
     "apiKey": "TU_API_KEY",
     "authDomain": "TU_PROYECTO.firebaseapp.com",
@@ -17,54 +17,68 @@ firebaseConfig = {
     "appId": "1:1234567890:web:abcdef123456",
     "databaseURL": ""
 }
+
 firebase = pyrebase.initialize_app(firebaseConfig)
 storage = firebase.storage()
 
-# Configuración de la app
+# -------------------------
+# CONFIGURACIÓN DE LA APP
+# -------------------------
 st.set_page_config(page_title="BilanKineIA", layout="centered")
 st.title("BilanKineIA")
 
-# --- OCR desde imagen o PDF ---
-def obtener_texto_desde_archivo(uploaded_file):
-    if uploaded_file.type == "application/pdf":
-        pdf_bytes = uploaded_file.read()
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        page = doc.load_page(0)
-        pix = page.get_pixmap(dpi=200)
-        imagen = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    else:
-        imagen = Image.open(uploaded_file)
+OCR_SPACE_API_KEY = "helloworld"  # Reemplaza esto por tu clave si la recibes
 
-    texto = pytesseract.image_to_string(imagen)
+# -------------------------
+# FUNCIONES OCR
+# -------------------------
+def extraer_texto_con_ocr_space(uploaded_file):
+    url = "https://api.ocr.space/parse/image"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+        temp_file.write(uploaded_file.read())
+        temp_file_path = temp_file.name
+
+    with open(temp_file_path, 'rb') as f:
+        response = requests.post(
+            url,
+            files={"file": f},
+            data={"apikey": OCR_SPACE_API_KEY, "language": "spa", "isOverlayRequired": False}
+        )
+
+    result = response.json()
+    texto = result['ParsedResults'][0]['ParsedText'] if 'ParsedResults' in result else ""
     return texto
 
 def extraer_nombre_y_fecha(texto):
-    # Buscar fecha en formato DD/MM/YYYY o similar
+    # Buscar fecha tipo 12/03/2025
     fechas = re.findall(r"\d{1,2}/\d{1,2}/\d{2,4}", texto)
-    fecha_detectada = fechas[0] if fechas else ""
+    fecha = fechas[0] if fechas else ""
 
-    # Buscar líneas con posibles nombres
-    nombre_detectado = ""
+    # Buscar nombre
+    nombre = ""
     for linea in texto.split("\n"):
-        if any(kw in linea.lower() for kw in ["paciente", "nom", "nombre", "sr", "sra", "mme", "m."]):
+        if any(palabra in linea.lower() for palabra in ["nombre", "nom", "paciente", "sr", "sra", "mme", "m."]):
             palabras = linea.strip().split()
             candidatos = [p for p in palabras if p.istitle()]
             if len(candidatos) >= 2:
-                nombre_detectado = " ".join(candidatos[:3])
+                nombre = " ".join(candidatos[:3])
                 break
+    return nombre.strip(), fecha.strip()
 
-    return nombre_detectado.strip(), fecha_detectada.strip()
-
-# Subida del archivo
-uploaded_file = st.file_uploader("Sube la prescripción (imagen o PDF)", type=["jpg", "png", "pdf"])
+# -------------------------
+# SUBIR PRESCRIPCIÓN
+# -------------------------
+uploaded_file = st.file_uploader("📤 Sube la prescripción (PDF o imagen)", type=["pdf", "png", "jpg", "jpeg"])
 
 nombre_detectado, fecha_detectada = "", ""
 
 if uploaded_file:
-    texto_extraido = obtener_texto_desde_archivo(uploaded_file)
+    texto_extraido = extraer_texto_con_ocr_space(uploaded_file)
     nombre_detectado, fecha_detectada = extraer_nombre_y_fecha(texto_extraido)
 
-# Formulario del paciente
+# -------------------------
+# CAMPOS DEL PACIENTE
+# -------------------------
 nombre = st.text_input("Nombre completo del paciente", value=nombre_detectado)
 fecha_str = st.text_input("Fecha de la prescripción (DD/MM/AAAA)", value=fecha_detectada)
 try:
@@ -72,14 +86,15 @@ try:
 except:
     fecha_prescripcion = datetime.date.today()
 
-# Información adicional opcional
 mostrar_info = st.checkbox("Añadir información adicional")
 info_adicional = st.text_area("Información adicional sobre el paciente", height=150) if mostrar_info else ""
 
-# Generar informe
+# -------------------------
+# GENERAR INFORME
+# -------------------------
 if st.button("Generar Informe"):
     if uploaded_file and nombre:
-        informe_generado = f"""
+        informe = f"""
 Informe Fisioterapéutico
 
 Paciente: {nombre}
@@ -91,38 +106,37 @@ Información adicional: {info_adicional if info_adicional else 'No especificada'
 
 Evaluación:
 - Se observa indicación de fisioterapia con ejercicios y terapia manual.
-- Se recomienda fortalecimiento, control motor y tratamiento complementario.
+- Se recomienda fortalecimiento del manguito rotador y estabilización articular.
 
 ---
 
 Tratamiento Propuesto
 
 1. Ejercicios (20 minutos)
-- Bandas elásticas, pesas progresivas.
-- Bicicleta estática y balón suizo.
+- Bicicleta estática, elásticos progresivos, balones suizos, luces de reacción.
 
 2. Terapia Manual (20 minutos)
-- Masaje descontracturante.
-- Estiramientos postisométricos.
+- Masaje, estiramientos postisométricos, movilización neural.
 
 3. Aparatología (20 minutos)
-- TENS y ultrasonidos.
+- TENS + infrarrojos o presoterapia (según el caso).
 
 ---
 
-Informe generado automáticamente para revisión profesional.
+Informe generado automáticamente por BilanKineIA.
 """
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp_file:
-            temp_file.write(informe_generado.encode("utf-8"))
+            temp_file.write(informe.encode("utf-8"))
             temp_path = temp_file.name
 
         fecha_archivo = fecha_prescripcion.strftime("%Y-%m-%d")
         nombre_archivo = f"{nombre.replace(' ', '_')}_{fecha_archivo}.txt"
-        ruta_en_storage = f"informes/{nombre_archivo}"
-        storage.child(ruta_en_storage).put(temp_path)
-        url = storage.child(ruta_en_storage).get_url(None)
+        ruta_storage = f"informes/{nombre_archivo}"
+        storage.child(ruta_storage).put(temp_path)
+        url = storage.child(ruta_storage).get_url(None)
 
-        st.success("Informe generado y subido correctamente.")
-        st.markdown(f"[Ver o descargar el informe]({url})")
+        st.success("✅ Informe generado correctamente")
+        st.markdown(f"📎 [Descargar informe]({url})")
     else:
-        st.error("Por favor, completa el nombre y sube una prescripción.")
+        st.warning("⚠️ Por favor, completa el nombre del paciente y sube la prescripción.")
