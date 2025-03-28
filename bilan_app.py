@@ -1,142 +1,124 @@
 import streamlit as st
-import requests
-import tempfile
-import pyrebase
 import datetime
+import tempfile
+import requests
+import pytesseract
+from PIL import Image
+from pdf2image import convert_from_bytes
 import re
+import pyrebase
+from fpdf import FPDF
 
-# -------------------------
+# ------------------------
 # CONFIGURACIÓN DE FIREBASE
-# -------------------------
+# ------------------------
 firebaseConfig = {
-    "apiKey": "TU_API_KEY",
-    "authDomain": "TU_PROYECTO.firebaseapp.com",
-    "projectId": "TU_PROYECTO",
-    "storageBucket": "TU_PROYECTO.appspot.com",
-    "messagingSenderId": "1234567890",
-    "appId": "1:1234567890:web:abcdef123456",
-    "databaseURL": ""
+  "apiKey": "AIzaSyB9iQ0voXbSlY2BXtUaERzIRE4uXLA1zJ0",
+  "authDomain": "bilankineia-7a2a8.firebaseapp.com",
+  "projectId": "bilankineia-7a2a8",
+  "storageBucket": "bilankineia-7a2a8.appspot.com",
+  "messagingSenderId": "980038899896",
+  "appId": "1:980038899896:web:1d53c3fe1318afee243c4d",
+  "measurementId": "G-T9ZPLYCXBN"
 }
 
 firebase = pyrebase.initialize_app(firebaseConfig)
 storage = firebase.storage()
 
-# -------------------------
+# ------------------------
 # CONFIGURACIÓN DE LA APP
-# -------------------------
+# ------------------------
 st.set_page_config(page_title="BilanKineIA", layout="centered")
 st.title("BilanKineIA")
 
-OCR_SPACE_API_KEY = "helloworld"  # Reemplaza por tu clave real si la recibes
+# ------------------------
+# FUNCIONES ÚTILES
+# ------------------------
+def extraer_texto_con_ocr_space(file_bytes):
+    OCR_SPACE_API_KEY = "helloworld"  # Gratuito sin clave
+    url_api = "https://api.ocr.space/parse/image"
 
-# -------------------------
-# FUNCIONES OCR
-# -------------------------
-def extraer_texto_con_ocr_space(uploaded_file):
-    url = "https://api.ocr.space/parse/image"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-        temp_file.write(uploaded_file.read())
-        temp_file_path = temp_file.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp:
+        temp.write(file_bytes)
+        temp_path = temp.name
 
-    with open(temp_file_path, 'rb') as f:
-        response = requests.post(
-            url,
+    with open(temp_path, 'rb') as f:
+        r = requests.post(
+            url_api,
             files={"file": f},
-            data={"apikey": OCR_SPACE_API_KEY, "language": "spa", "isOverlayRequired": False}
+            data={"apikey": OCR_SPACE_API_KEY, "language": "spa"}
         )
-
-    result = response.json()
-    texto = result['ParsedResults'][0]['ParsedText'] if 'ParsedResults' in result else ""
-    return texto
+    resultado = r.json()
+    return resultado["ParsedResults"][0]["ParsedText"] if "ParsedResults" in resultado else ""
 
 def extraer_nombre_y_fecha(texto):
-    # Buscar fecha tipo 12/03/2025
-    fechas = re.findall(r"\d{1,2}/\d{1,2}/\d{2,4}", texto)
-    fecha = fechas[0] if fechas else ""
+    posibles_nombres = re.findall(r"\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)\b", texto)
+    posibles_fechas = re.findall(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", texto)
+    
+    nombre = posibles_nombres[0] if posibles_nombres else ""
+    fecha_str = posibles_fechas[0] if posibles_fechas else ""
+    return nombre, fecha_str
 
-    # Buscar nombre
-    nombre = ""
-    for linea in texto.split("\n"):
-        if any(palabra in linea.lower() for palabra in ["nombre", "nom", "paciente", "sr", "sra", "mme", "m."]):
-            palabras = linea.strip().split()
-            candidatos = [p for p in palabras if p.istitle()]
-            if len(candidatos) >= 2:
-                nombre = " ".join(candidatos[:3])
-                break
-    return nombre.strip(), fecha.strip()
+def generar_pdf(nombre, fecha, informe):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, f"Nombre: {nombre}\nFecha: {fecha}\n\n{informe}")
+    
+    ruta_pdf = f"{nombre.replace(' ', '_')}_{fecha.replace('/', '-')}.pdf"
+    pdf.output(ruta_pdf)
+    return ruta_pdf
 
-# -------------------------
-# SUBIR PRESCRIPCIÓN
-# -------------------------
-uploaded_file = st.file_uploader("📤 Sube la prescripción (PDF o imagen)", type=["pdf", "png", "jpg", "jpeg"])
+# ------------------------
+# SUBIDA DE PRESCRIPCIÓN
+# ------------------------
+archivo_subido = st.file_uploader("📤 Sube la prescripción (PDF o imagen)", type=["pdf", "png", "jpg", "jpeg"])
 
-nombre_detectado, fecha_detectada = "", ""
+nombre = ""
+fecha_prescripcion = ""
 
-if uploaded_file:
-    texto_extraido = extraer_texto_con_ocr_space(uploaded_file)
-    nombre_detectado, fecha_detectada = extraer_nombre_y_fecha(texto_extraido)
+if archivo_subido:
+    texto_extraido = extraer_texto_con_ocr_space(archivo_subido.read())
+    nombre, fecha_prescripcion = extraer_nombre_y_fecha(texto_extraido)
 
-# -------------------------
-# CAMPOS DEL PACIENTE
-# -------------------------
-nombre = st.text_input("Nombre completo del paciente", value=nombre_detectado)
-fecha_str = st.text_input("Fecha de la prescripción (DD/MM/AAAA)", value=fecha_detectada)
-try:
-    fecha_prescripcion = datetime.datetime.strptime(fecha_str, "%d/%m/%Y").date()
-except:
-    fecha_prescripcion = datetime.date.today()
+    nombre = st.text_input("Nombre completo del paciente", value=nombre)
+    fecha_prescripcion = st.text_input("Fecha de la prescripción (DD/MM/AAAA)", value=fecha_prescripcion)
 
-mostrar_info = st.checkbox("Añadir información adicional")
-info_adicional = st.text_area("Información adicional sobre el paciente", height=150) if mostrar_info else ""
+# ------------------------
+# INFORMACIÓN ADICIONAL
+# ------------------------
+mostrar_info = st.checkbox("➕ Añadir información adicional")
+info_adicional = ""
+if mostrar_info:
+    info_adicional = st.text_area("Información adicional sobre el paciente", height=150)
 
-# -------------------------
+# ------------------------
 # GENERAR INFORME
-# -------------------------
-if st.button("Generar Informe"):
-    if uploaded_file and nombre:
-        informe = f"""
-Informe Fisioterapéutico
+# ------------------------
+if st.button("Generar Informe") and archivo_subido and nombre and fecha_prescripcion:
+    # Generar informe
+    informe = f"""
+    **Informe Fisioterapéutico**
+    **Paciente:** {nombre}
+    **Fecha:** {fecha_prescripcion}
+    **Información adicional:** {info_adicional or 'Ninguna'}
 
-Paciente: {nombre}
-Fecha de la prescripción: {fecha_prescripcion.strftime('%d/%m/%Y')}
-Nombre del archivo original: {uploaded_file.name}
-Información adicional: {info_adicional if info_adicional else 'No especificada'}
+    **Evaluación:**
+    - El paciente presenta indicación de fisioterapia.
+    - Se recomienda iniciar tratamiento con ejercicios terapéuticos, terapia manual y aparatología.
 
----
+    **Tratamiento Propuesto:**
+    1. Ejercicios: trabajo de movilidad, fuerza y coordinación (20 minutos).
+    2. Terapia manual: masaje terapéutico, estiramientos y movilizaciones (20 minutos).
+    3. Aparatología: TENS, ultrasonidos o presoterapia (20 minutos).
+    """
 
-Evaluación:
-- Se observa indicación de fisioterapia con ejercicios y terapia manual.
-- Se recomienda fortalecimiento del manguito rotador y estabilización articular.
+    st.markdown(informe)
 
----
+    # Generar PDF
+    pdf_path = generar_pdf(nombre, fecha_prescripcion, informe)
 
-Tratamiento Propuesto
-
-1. Ejercicios (20 minutos)
-- Bicicleta estática, elásticos progresivos, balones suizos, luces de reacción.
-
-2. Terapia Manual (20 minutos)
-- Masaje, estiramientos postisométricos, movilización neural.
-
-3. Aparatología (20 minutos)
-- TENS + infrarrojos o presoterapia (según el caso).
-
----
-
-Informe generado automáticamente por BilanKineIA.
-"""
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp_file:
-            temp_file.write(informe.encode("utf-8"))
-            temp_path = temp_file.name
-
-        fecha_archivo = fecha_prescripcion.strftime("%Y-%m-%d")
-        nombre_archivo = f"{nombre.replace(' ', '_')}_{fecha_archivo}.txt"
-        ruta_storage = f"informes/{nombre_archivo}"
-        storage.child(ruta_storage).put(temp_path)
-        url = storage.child(ruta_storage).get_url(None)
-
-        st.success("✅ Informe generado correctamente")
-        st.markdown(f"📎 [Descargar informe]({url})")
-    else:
-        st.warning("⚠️ Por favor, completa el nombre del paciente y sube la prescripción.")
+    # Subir a Firebase
+    ruta_storage = f"informes/{nombre.replace(' ', '_')}_{fecha_prescripcion.replace('/', '-')}.pdf"
+    storage.child(ruta_storage).put(pdf_path)
+    st.success("Informe generado y subido correctamente a Firebase.")
