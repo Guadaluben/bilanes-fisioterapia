@@ -1,11 +1,3 @@
 streamlit
 pyrebase4
-pytesseract
-Pillow
-opencv-python
-PyMuPDF
-google-cloud-storage
-setuptools
-
-
-
+requests
