@@ -1,10 +1,6 @@
 import streamlit as st
-import datetime
 import tempfile
 import requests
-import pytesseract
-from PIL import Image
-from pdf2image import convert_from_bytes
 import re
 import pyrebase
 from fpdf import FPDF
@@ -52,7 +48,9 @@ def extraer_texto_con_ocr_space(file_bytes):
     return resultado["ParsedResults"][0]["ParsedText"] if "ParsedResults" in resultado else ""
 
 def extraer_nombre_y_fecha(texto):
-    posibles_nombres = re.findall(r"\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)\b", texto)
+    # Soporta nombres con caracteres acentuados y eÑes
+    patron_nombre = r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+)\b"
+    posibles_nombres = re.findall(patron_nombre, texto, flags=re.UNICODE)
     posibles_fechas = re.findall(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", texto)
     
     nombre = posibles_nombres[0] if posibles_nombres else ""
